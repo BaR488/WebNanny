@@ -1,0 +1,161 @@
+﻿@using System.Net.Http
+@using Newtonsoft.Json
+@using Newtonsoft.Json.Linq
+
+@{
+    //Проверка токена в Session
+    string strToken;
+    strToken = (string)Session["Token"];
+    if (strToken == null)
+    {
+        strToken = GetNewToken();
+        Session["Token"] = strToken;
+    }
+    //Чтение данных Sensors
+    Dictionary<string, string> dicSensors = new Dictionary<string, string>();
+    GetStateSensors(strToken, dicSensors);
+    //Чтение данных Actuation
+}
+
+@functions
+{
+
+    // Pass a user name to this method.
+    string GetNewToken()
+    {
+        //чтение login и pass
+        string strLogin, strPass;
+        strLogin = System.Configuration.ConfigurationManager.AppSettings["Login"];
+        strPass = System.Configuration.ConfigurationManager.AppSettings["Pass"];
+        //авторизация, получение токена.
+        //https://github.com/enableiot/iotkit-api/wiki/Authorization
+        //структура JSON
+        var obj = new
+        {
+            username = strLogin,
+            password = strPass
+        };
+        string postData = JsonConvert.SerializeObject(obj, Formatting.Indented);
+        //HttpWebRequest
+        HttpWebRequest httpWebRequest = (HttpWebRequest)HttpWebRequest.Create("https://dashboard.us.enableiot.com/v1/api/auth/token");
+        httpWebRequest.Method = "POST";
+        httpWebRequest.ContentType = "application/json";
+        //
+        byte[] byte1 = System.Text.Encoding.UTF8.GetBytes(postData);
+        httpWebRequest.ContentLength = byte1.Length;
+        httpWebRequest.GetRequestStream().Write(byte1, 0, byte1.Length);
+        httpWebRequest.GetRequestStream().Close();
+        //
+        StreamReader reader = new StreamReader(httpWebRequest.GetResponse().GetResponseStream());
+        JObject objResponse = JObject.Parse(reader.ReadToEnd());
+        return (string)objResponse["token"];
+    }
+
+    void GetStateSensors(string strToken, Dictionary<string, string> dicSensors)
+    {
+        //чтение данных
+        //https://github.com/enableiot/iotkit-api/wiki/Data-API
+        //структура JSON
+        var obj = new
+        {
+            from = 0,
+            targetFilter = new { deviceList = new[] { "62-e3-71-4f-9a-66" } },
+            metrics = new[] {
+                    new {
+                        id="28ba23f3-0cc7-411d-9e77-72baea7e0cfc",
+                        op="none"
+                    },
+                    new {
+                        id="de8d8320-90e7-42bb-9a5f-145928bbbf87",
+                        op="none"
+                    },
+                    new {
+                        id="af9fd412-3b7a-49e0-bf3c-8eea10d6c7a6",
+                        op="none"
+                    },
+                    new {
+                        id="1e54d381-7440-449f-b497-b4a4d6122163",
+                        op="none"
+                    }
+                }
+        };
+        string postData = JsonConvert.SerializeObject(obj, Formatting.Indented);
+        //HttpWebRequest
+        HttpWebRequest httpWebRequest = (HttpWebRequest)HttpWebRequest.Create("https://dashboard.us.enableiot.com/v1/api/accounts/3d3690d8-eb90-44ba-bb3e-9682ccfa1f28/data/search");
+        httpWebRequest.Method = "POST";
+        httpWebRequest.ContentType = "application/json";
+        //Headers
+        httpWebRequest.Headers.Add("Authorization", "Bearer " + strToken);
+        httpWebRequest.Headers.Add("accountId", "3d3690d8-eb90-44ba-bb3e-9682ccfa1f28");
+        //
+        byte[] byte1 = System.Text.Encoding.UTF8.GetBytes(postData);
+        httpWebRequest.ContentLength = byte1.Length;
+        httpWebRequest.GetRequestStream().Write(byte1, 0, byte1.Length);
+        httpWebRequest.GetRequestStream().Close();
+        //
+        StreamReader reader = new StreamReader(httpWebRequest.GetResponse().GetResponseStream());
+
+
+        JObject objResponse = JObject.Parse(reader.ReadToEnd());
+
+        dicSensors.Add("data", objResponse.ToString());
+
+        dicSensors.Add("temperatureNow", (string)objResponse["series"][2]["points"][objResponse["series"][2]["points"].Count() - 1]["value"]);
+        dicSensors.Add("soundNow", (string)objResponse["series"][3]["points"][objResponse["series"][3]["points"].Count() - 1]["value"]);
+        dicSensors.Add("motionNow", (string)objResponse["series"][0]["points"][objResponse["series"][0]["points"].Count() - 1]["value"]);
+        dicSensors.Add("humidityNow", (string)objResponse["series"][1]["points"][objResponse["series"][1]["points"].Count() - 1]["value"]);
+
+        //JObject objResponse = JObject.Parse(reader.ReadToEnd());
+        ////add Dic
+
+        //string strValuesSensor = "";
+        //string value = "";
+        //int length = objResponse["series"][0]["points"].Count();
+        //for (int i = 0; i < 10; i++)
+        //{
+        //    value = (string) objResponse["series"][0]["points"][length - i - 1]["value"] + "@";
+        //    strValuesSensor += value;
+        //}
+        //strValuesSensor = strValuesSensor.TrimEnd(new char[] {'@'});
+
+
+        ////strValueSensor = Math.Round(decimal.Parse(strValueSensor, System.Globalization.CultureInfo.CreateSpecificCulture("en")), 2).ToString();
+        //dicSensors.Add("temperature", strValuesSensor);
+    }
+}
+        
+
+<html>
+<head>
+    <title>WebNanny</title>
+    <!-- Styles -->
+    <script src="js/jquery-2.1.4.min.js"></script>
+    <link href="/bootstrap/css/bootstrap.css" rel="stylesheet">
+    <link href="/bootstrap/css/cssover.css" rel="stylesheet">
+    <script src="/js/Chart.js"></script>
+    <script src="/js/chartsAdding.js"></script>
+</head>
+<body onload="getStatistic(@dicSensors["data"])">
+<div style="padding-left: 20px">
+    <div class="row">
+        <div class="list-group col-xs-2 col-xs-offset-1">
+            <h1>WebNanny</h1>
+            <p style="padding-left: 5px">Сейчас: @DateTime.Now.ToString()</p>
+            <h4>Состояние датчиков:</h4>
+
+
+            <a href="#" class="list-group-item" onclick="addLineChart(@dicSensors["data"])">Температура @dicSensors["temperatureNow"] °C</a>
+            <a href="#" class="list-group-item" onclick="soundTable(@dicSensors["data"])">Ребенок @dicSensors["soundNow"]</a>
+            <a href="#" class="list-group-item" onclick="motionTable(@dicSensors["data"])">Ребенок @dicSensors["motionNow"]</a>
+            <a href="#" class="list-group-item" onclick="humidityTable(@dicSensors["data"])">В кроватке @dicSensors["humidityNow"]</a>
+        </div>
+
+        <div id="data" class="col-xs-7" style="margin-top: 10px">
+        </div>
+    </div>
+
+</div>
+
+
+</body>
+</html>
